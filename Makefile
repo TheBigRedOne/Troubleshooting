@@ -29,16 +29,11 @@ generate-keys: start-vagrant
 run-test: compile-consumer compile-producer generate-keys
 	vagrant ssh -c 'cd /home/vagrant/mini-ndn/flooding && sudo python test.py'
 
-# Quit Mini-NDN
-quit-minindn: run-test
-	vagrant ssh -c 'echo quit | minindn'
-
 # Export results
-export-results: quit-minindn
+export-results: run-test
 	mkdir -p $(EXTERNAL_RESULTS_DIR)
 	vagrant ssh -c 'cp /home/vagrant/mini-ndn/flooding/consumer.log /vagrant/$(RESULTS_DIR)/'
 	vagrant ssh -c 'cp /home/vagrant/mini-ndn/flooding/producer.log /vagrant/$(RESULTS_DIR)/'
-	cp $(RESULTS_DIR)/*.log $(EXTERNAL_RESULTS_DIR)/
 
 # Shut down Vagrant VM
 stop-vagrant: export-results
