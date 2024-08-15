@@ -40,5 +40,7 @@ if __name__ == '__main__':
     producer.cmd("/home/vagrant/mini-ndn/flooding/producer &> /home/vagrant/mini-ndn/flooding/producer.log &")
     consumer.cmd("/home/vagrant/mini-ndn/flooding/consumer &> /home/vagrant/mini-ndn/flooding/consumer.log &")
 
+    sleep(30)
+    
     ndn.stop()
   
