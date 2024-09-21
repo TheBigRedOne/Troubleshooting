@@ -39,8 +39,8 @@ $INSTALL_BASE = <<EOF
 EOF
 
 $DOWNLOAD_FILES = <<EOF
-  # Clone Flooding project
-  git clone https://github.com/TheBigRedOne/flooding_experiment.git /home/vagrant/mini-ndn/flooding
+  # Clone the project
+  git clone https://github.com/TheBigRedOne/Troubleshooting /home/vagrant/mini-ndn/flooding
 EOF
 
 Vagrant.configure("2") do |config|
