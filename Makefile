@@ -28,15 +28,8 @@ TEST2_DONE = $(RESULTS_DIR)/test2_done
 create-results-dir:
 	mkdir -p $(RESULTS_DIR)
 
-# Main targets
-all: $(CONSUMER_LOG_INFO) $(PRODUCER_LOG_INFO) $(CONSUMER_NLSR_INFO) $(PRODUCER_NLSR_INFO) \
-     $(CONSUMER_LOG_DEBUG) $(PRODUCER_LOG_DEBUG) $(CONSUMER_NLSR_DEBUG) $(PRODUCER_NLSR_DEBUG)
-
-$(CONSUMER_EXEC): | start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && g++ -std=c++17 -o $(CONSUMER_EXEC) consumer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
-
-$(PRODUCER_EXEC): | start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && g++ -std=c++17 -o $(PRODUCER_EXEC) producer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
+# Main target
+all: $(TEST1_DONE) $(TEST2_DONE)
 
 # Experiment 1: Run test1.py and gather logs
 $(TEST1_DONE): $(CONSUMER_EXEC) $(PRODUCER_EXEC) generate-keys create-results-dir | start-vagrant
@@ -84,4 +77,3 @@ clean:
 
 # Automatically remove files on error
 .DELETE_ON_ERROR:
-
