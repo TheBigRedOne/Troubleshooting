@@ -2,20 +2,31 @@
 VAGRANTFILE = Vagrantfile
 FLOODING_DIR = /home/vagrant/mini-ndn/flooding
 RESULTS_DIR = results
+CONSUMER_LOG_DIR = /tmp/minindn/consumer/log
+PRODUCER_LOG_DIR = /tmp/minindn/producer/log
 
 # Executable names
 CONSUMER_EXEC = consumer
 PRODUCER_EXEC = producer
 
 # Logs and output files
-CONSUMER_LOG = $(RESULTS_DIR)/consumer.log
-PRODUCER_LOG = $(RESULTS_DIR)/producer.log
-PCAP_FILE = $(RESULTS_DIR)/consumer_capture.pcap
-PCAP_CSV = $(RESULTS_DIR)/consumer_capture.csv
-THROUGHPUT_CSV = $(RESULTS_DIR)/consumer_capture_throughput.csv
+CONSUMER_LOG_INFO = $(RESULTS_DIR)/consumer_nfd_info.log
+PRODUCER_LOG_INFO = $(RESULTS_DIR)/producer_nfd_info.log
+CONSUMER_NLSR_INFO = $(RESULTS_DIR)/consumer_nlsr_info.log
+PRODUCER_NLSR_INFO = $(RESULTS_DIR)/producer_nlsr_info.log
+
+CONSUMER_LOG_DEBUG = $(RESULTS_DIR)/consumer_nfd_debug.log
+PRODUCER_LOG_DEBUG = $(RESULTS_DIR)/producer_nfd_debug.log
+CONSUMER_NLSR_DEBUG = $(RESULTS_DIR)/consumer_nlsr_debug.log
+PRODUCER_NLSR_DEBUG = $(RESULTS_DIR)/producer_nlsr_debug.log
+
+# Ensure the results directory exists
+create-results-dir:
+	mkdir -p $(RESULTS_DIR)
 
 # Main targets
-all: $(PCAP_FILE) $(THROUGHPUT_CSV)
+all: $(CONSUMER_LOG_INFO) $(PRODUCER_LOG_INFO) $(CONSUMER_NLSR_INFO) $(PRODUCER_NLSR_INFO) \
+     $(CONSUMER_LOG_DEBUG) $(PRODUCER_LOG_DEBUG) $(CONSUMER_NLSR_DEBUG) $(PRODUCER_NLSR_DEBUG)
 
 $(CONSUMER_EXEC): | start-vagrant
 	vagrant ssh -c 'cd $(FLOODING_DIR) && g++ -std=c++17 -o $(CONSUMER_EXEC) consumer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
@@ -23,15 +34,21 @@ $(CONSUMER_EXEC): | start-vagrant
 $(PRODUCER_EXEC): | start-vagrant
 	vagrant ssh -c 'cd $(FLOODING_DIR) && g++ -std=c++17 -o $(PRODUCER_EXEC) producer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
 
-$(PCAP_FILE): $(CONSUMER_EXEC) $(PRODUCER_EXEC) generate-keys | start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python exp.py'
-	mkdir -p $(RESULTS_DIR)
-	vagrant ssh -c 'cp $(FLOODING_DIR)/consumer_capture.pcap /vagrant/$(PCAP_FILE)'
+# Experiment 1: Run test1.py and gather logs
+$(CONSUMER_LOG_INFO) $(PRODUCER_LOG_INFO) $(CONSUMER_NLSR_INFO) $(PRODUCER_NLSR_INFO): $(CONSUMER_EXEC) $(PRODUCER_EXEC) generate-keys create-results-dir | start-vagrant
+	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test1.py'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(CONSUMER_LOG_INFO)'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(CONSUMER_NLSR_INFO)'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(PRODUCER_LOG_INFO)'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(PRODUCER_NLSR_INFO)'
 
-$(THROUGHPUT_CSV): $(PCAP_FILE) | start-vagrant
-	vagrant ssh -c 'tshark -r /vagrant/$(PCAP_FILE) -T fields -e frame.time_epoch -e frame.len -E header=y -E separator=, -E quote=d > /vagrant/$(PCAP_CSV)'
-	vagrant ssh -c 'python3 $(FLOODING_DIR)/throughput_calculation.py /vagrant/$(PCAP_CSV)'
-	vagrant ssh -c 'python3 $(FLOODING_DIR)/plot_throughput.py /vagrant/$(THROUGHPUT_CSV)'
+# Experiment 2: Run test2.py and gather logs
+$(CONSUMER_LOG_DEBUG) $(PRODUCER_LOG_DEBUG) $(CONSUMER_NLSR_DEBUG) $(PRODUCER_NLSR_DEBUG): $(CONSUMER_LOG_INFO) $(PRODUCER_LOG_INFO) $(CONSUMER_NLSR_INFO) $(PRODUCER_NLSR_INFO) create-results-dir | start-vagrant
+	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test2.py'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(CONSUMER_LOG_DEBUG)'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(CONSUMER_NLSR_DEBUG)'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(PRODUCER_LOG_DEBUG)'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(PRODUCER_NLSR_DEBUG)'
 
 # Vagrant management
 start-vagrant:
@@ -51,13 +68,12 @@ generate-keys: | start-vagrant
 	ndnsec key-gen /example/testApp && \
 	ndnsec sign-req /example/testApp | ndnsec cert-gen -s /example -i example | ndnsec cert-install -'
 
-# Cleanup
+# Cleanup: Only remove the compiled executables, but preserve logs
 clean:
-	rm -f $(CONSUMER_LOG) $(PRODUCER_LOG) $(PCAP_FILE) $(PCAP_CSV) $(THROUGHPUT_CSV)
 	vagrant ssh -c 'cd $(FLOODING_DIR) && rm -f $(CONSUMER_EXEC) $(PRODUCER_EXEC)'
 
 # .PHONY ensures these are not treated as files
-.PHONY: all start-vagrant stop-vagrant clean-vagrant generate-keys clean
+.PHONY: all start-vagrant stop-vagrant clean-vagrant generate-keys clean create-results-dir
 
 # Automatically remove files on error
 .DELETE_ON_ERROR:
