@@ -20,6 +20,10 @@ PRODUCER_LOG_DEBUG = $(RESULTS_DIR)/producer_nfd_debug.log
 CONSUMER_NLSR_DEBUG = $(RESULTS_DIR)/consumer_nlsr_debug.log
 PRODUCER_NLSR_DEBUG = $(RESULTS_DIR)/producer_nlsr_debug.log
 
+# Markers for completed experiments
+TEST1_DONE = $(RESULTS_DIR)/test1_done
+TEST2_DONE = $(RESULTS_DIR)/test2_done
+
 # Ensure the results directory exists
 create-results-dir:
 	mkdir -p $(RESULTS_DIR)
@@ -35,20 +39,22 @@ $(PRODUCER_EXEC): | start-vagrant
 	vagrant ssh -c 'cd $(FLOODING_DIR) && g++ -std=c++17 -o $(PRODUCER_EXEC) producer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
 
 # Experiment 1: Run test1.py and gather logs
-$(CONSUMER_LOG_INFO) $(PRODUCER_LOG_INFO) $(CONSUMER_NLSR_INFO) $(PRODUCER_NLSR_INFO): $(CONSUMER_EXEC) $(PRODUCER_EXEC) generate-keys create-results-dir | start-vagrant
+$(TEST1_DONE): $(CONSUMER_EXEC) $(PRODUCER_EXEC) generate-keys create-results-dir | start-vagrant
 	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test1.py'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(CONSUMER_LOG_INFO)'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(CONSUMER_NLSR_INFO)'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(PRODUCER_LOG_INFO)'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(PRODUCER_NLSR_INFO)'
+	touch $(TEST1_DONE)
 
 # Experiment 2: Run test2.py and gather logs
-$(CONSUMER_LOG_DEBUG) $(PRODUCER_LOG_DEBUG) $(CONSUMER_NLSR_DEBUG) $(PRODUCER_NLSR_DEBUG): $(CONSUMER_LOG_INFO) $(PRODUCER_LOG_INFO) $(CONSUMER_NLSR_INFO) $(PRODUCER_NLSR_INFO) create-results-dir | start-vagrant
+$(TEST2_DONE): $(TEST1_DONE) create-results-dir | start-vagrant
 	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test2.py'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(CONSUMER_LOG_DEBUG)'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(CONSUMER_NLSR_DEBUG)'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(PRODUCER_LOG_DEBUG)'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(PRODUCER_NLSR_DEBUG)'
+	touch $(TEST2_DONE)
 
 # Vagrant management
 start-vagrant:
@@ -71,9 +77,11 @@ generate-keys: | start-vagrant
 # Cleanup: Only remove the compiled executables, but preserve logs
 clean:
 	vagrant ssh -c 'cd $(FLOODING_DIR) && rm -f $(CONSUMER_EXEC) $(PRODUCER_EXEC)'
+	rm -f $(TEST1_DONE) $(TEST2_DONE)
 
 # .PHONY ensures these are not treated as files
 .PHONY: all start-vagrant stop-vagrant clean-vagrant generate-keys clean create-results-dir
 
 # Automatically remove files on error
 .DELETE_ON_ERROR:
+
