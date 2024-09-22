@@ -1,79 +1,56 @@
-# Paths
+# Vagrantfile path
 VAGRANTFILE = Vagrantfile
-FLOODING_DIR = /home/vagrant/mini-ndn/flooding
 RESULTS_DIR = results
+FLOODING_DIR = /home/vagrant/mini-ndn/flooding
 CONSUMER_LOG_DIR = /tmp/minindn/consumer/log
 PRODUCER_LOG_DIR = /tmp/minindn/producer/log
 
-# Executable names
-CONSUMER_EXEC = consumer
-PRODUCER_EXEC = producer
-
-# Logs and output files
-CONSUMER_LOG_INFO = $(RESULTS_DIR)/consumer_nfd_info.log
-PRODUCER_LOG_INFO = $(RESULTS_DIR)/producer_nfd_info.log
-CONSUMER_NLSR_INFO = $(RESULTS_DIR)/consumer_nlsr_info.log
-PRODUCER_NLSR_INFO = $(RESULTS_DIR)/producer_nlsr_info.log
-
-CONSUMER_LOG_DEBUG = $(RESULTS_DIR)/consumer_nfd_debug.log
-PRODUCER_LOG_DEBUG = $(RESULTS_DIR)/producer_nfd_debug.log
-CONSUMER_NLSR_DEBUG = $(RESULTS_DIR)/consumer_nlsr_debug.log
-PRODUCER_NLSR_DEBUG = $(RESULTS_DIR)/producer_nlsr_debug.log
-
-# Markers for completed experiments
-TEST1_DONE = $(RESULTS_DIR)/test1_done
-TEST2_DONE = $(RESULTS_DIR)/test2_done
-
-# Ensure the results directory exists
-create-results-dir:
-	mkdir -p $(RESULTS_DIR)
-
-# Main target
-all: $(TEST1_DONE) $(TEST2_DONE)
-
-# Experiment 1: Run test1.py and gather logs
-$(TEST1_DONE): $(CONSUMER_EXEC) $(PRODUCER_EXEC) generate-keys create-results-dir | start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test1.py'
-	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(CONSUMER_LOG_INFO)'
-	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(CONSUMER_NLSR_INFO)'
-	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(PRODUCER_LOG_INFO)'
-	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(PRODUCER_NLSR_INFO)'
-	touch $(TEST1_DONE)
-
-# Experiment 2: Run test2.py and gather logs
-$(TEST2_DONE): $(TEST1_DONE) create-results-dir | start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test2.py'
-	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(CONSUMER_LOG_DEBUG)'
-	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(CONSUMER_NLSR_DEBUG)'
-	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(PRODUCER_LOG_DEBUG)'
-	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(PRODUCER_NLSR_DEBUG)'
-	touch $(TEST2_DONE)
-
-# Vagrant management
+# Vagrant VM start
 start-vagrant:
 	vagrant up --provider virtualbox
 
-stop-vagrant:
-	vagrant halt
+# Compile consumer.cpp
+compile-consumer: start-vagrant
+	vagrant ssh -c 'cd $(FLOODING_DIR) && \
+	g++ -std=c++17 -o consumer consumer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
 
-clean-vagrant:
-	vagrant destroy -f
+# Compile producer.cpp
+compile-producer: start-vagrant
+	vagrant ssh -c 'cd $(FLOODING_DIR) && \
+	g++ -std=c++17 -o producer producer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
 
-# Key generation
-generate-keys: | start-vagrant
+# Generate trust anchor
+generate-keys: start-vagrant
 	vagrant ssh -c 'cd $(FLOODING_DIR) && \
 	ndnsec key-gen /example && \
 	ndnsec cert-dump -i /example > example-trust-anchor.cert && \
 	ndnsec key-gen /example/testApp && \
 	ndnsec sign-req /example/testApp | ndnsec cert-gen -s /example -i example | ndnsec cert-install -'
 
-# Cleanup: Only remove the compiled executables, but preserve logs
-clean:
-	vagrant ssh -c 'cd $(FLOODING_DIR) && rm -f $(CONSUMER_EXEC) $(PRODUCER_EXEC)'
-	rm -f $(TEST1_DONE) $(TEST2_DONE)
+# Run the first experiment (test1.py) and collect logs
+run-test1: compile-consumer compile-producer generate-keys
+	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test1.py'
+	mkdir -p $(RESULTS_DIR)
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/consumer_nfd_info.log'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/consumer_nlsr_info.log'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/producer_nfd_info.log'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/producer_nlsr_info.log'
 
-# .PHONY ensures these are not treated as files
-.PHONY: all start-vagrant stop-vagrant clean-vagrant generate-keys clean create-results-dir
+# Run the second experiment (test2.py) and collect logs
+run-test2: run-test1
+	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test2.py'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/consumer_nfd_debug.log'
+	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/consumer_nlsr_debug.log'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/producer_nfd_debug.log'
+	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/producer_nlsr_debug.log'
 
-# Automatically remove files on error
-.DELETE_ON_ERROR:
+# Shut down Vagrant VM
+stop-vagrant: run-test2
+	vagrant halt
+
+# Clean Vagrant VM
+clean-vagrant: stop-vagrant
+	vagrant destroy -f
+
+# Run all steps, generate results, and export them
+all: clean-vagrant
