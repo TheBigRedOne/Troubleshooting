@@ -1,56 +1,57 @@
-# Vagrantfile path
-VAGRANTFILE = Vagrantfile
-RESULTS_DIR = results
+# Directories
 FLOODING_DIR = /home/vagrant/mini-ndn/flooding
+RESULTS_DIR = results
 CONSUMER_LOG_DIR = /tmp/minindn/consumer/log
 PRODUCER_LOG_DIR = /tmp/minindn/producer/log
 
-# Vagrant VM start
+# Log files
+CONSUMER_INFO_LOG = $(RESULTS_DIR)/consumer_nfd_info.log \
+                    $(RESULTS_DIR)/consumer_nlsr_info.log
+PRODUCER_INFO_LOG = $(RESULTS_DIR)/producer_nfd_info.log \
+                    $(RESULTS_DIR)/producer_nlsr_info.log
+
+CONSUMER_DEBUG_LOG = $(RESULTS_DIR)/consumer_nfd_debug.log \
+                     $(RESULTS_DIR)/consumer_nlsr_debug.log
+PRODUCER_DEBUG_LOG = $(RESULTS_DIR)/producer_nfd_debug.log \
+                     $(RESULTS_DIR)/producer_nlsr_debug.log
+
+LOGS_INFO = $(CONSUMER_INFO_LOG) $(PRODUCER_INFO_LOG)
+LOGS_DEBUG = $(CONSUMER_DEBUG_LOG) $(PRODUCER_DEBUG_LOG)
+
+# Targets
+all: start-vagrant $(LOGS_INFO) $(LOGS_DEBUG) stop-vagrant destroy-vagrant
+
 start-vagrant:
 	vagrant up --provider virtualbox
 
-# Compile consumer.cpp
-compile-consumer: start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && \
-	g++ -std=c++17 -o consumer consumer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
-
-# Compile producer.cpp
-compile-producer: start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && \
-	g++ -std=c++17 -o producer producer.cpp $$(pkg-config --cflags --libs libndn-cxx)'
-
-# Generate trust anchor
-generate-keys: start-vagrant
-	vagrant ssh -c 'cd $(FLOODING_DIR) && \
-	ndnsec key-gen /example && \
-	ndnsec cert-dump -i /example > example-trust-anchor.cert && \
-	ndnsec key-gen /example/testApp && \
-	ndnsec sign-req /example/testApp | ndnsec cert-gen -s /example -i example | ndnsec cert-install -'
-
-# Run the first experiment (test1.py) and collect logs
-run-test1: compile-consumer compile-producer generate-keys
+$(LOGS_INFO): | $(RESULTS_DIR)
 	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test1.py'
-	mkdir -p $(RESULTS_DIR)
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/consumer_nfd_info.log'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/consumer_nlsr_info.log'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/producer_nfd_info.log'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/producer_nlsr_info.log'
 
-# Run the second experiment (test2.py) and collect logs
-run-test2: run-test1
+$(LOGS_DEBUG): | $(RESULTS_DIR)
 	vagrant ssh -c 'cd $(FLOODING_DIR) && sudo python test2.py'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/consumer_nfd_debug.log'
 	vagrant ssh -c 'cp $(CONSUMER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/consumer_nlsr_debug.log'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nfd.log /vagrant/$(RESULTS_DIR)/producer_nfd_debug.log'
 	vagrant ssh -c 'cp $(PRODUCER_LOG_DIR)/nlsr.log /vagrant/$(RESULTS_DIR)/producer_nlsr_debug.log'
 
-# Shut down Vagrant VM
-stop-vagrant: run-test2
+$(RESULTS_DIR):
+	mkdir -p $(RESULTS_DIR)
+
+stop-vagrant:
 	vagrant halt
 
-# Clean Vagrant VM
-clean-vagrant: stop-vagrant
+destroy-vagrant: stop-vagrant
 	vagrant destroy -f
 
-# Run all steps, generate results, and export them
-all: clean-vagrant
+clean:
+	rm -f $(LOGS_INFO) $(LOGS_DEBUG)
+
+.PHONY: all start-vagrant stop-vagrant destroy-vagrant clean
+
+.DELETE_ON_ERROR:
+.NOTINTERMEDIATE:
+MAKEFLAGS += --output-sync --warn-undefined-variables --no-builtin-rules --no-builtin-variables
